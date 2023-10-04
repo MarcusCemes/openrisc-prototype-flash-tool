@@ -1,0 +1,17 @@
+[package]
+name = "openrisc-prototype-flash-tool"
+authors = ["Marcus Cemes"]
+version = "1.0.0"
+edition = "2021"
+
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+eyre = "0.6"
+serialport = "4.2"
+
+
+[profile.release]
+codegen-units = 1 # assists size over speed
+opt-level = "z"   # optimize for size
+strip = true      # strip symbols
