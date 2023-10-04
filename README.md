@@ -14,7 +14,7 @@ Written in Rust to be portable, fast and simple to use to automate the re-progra
 
 ## Prerequisites
 
-Check the releases page to see if there's a pre-compiled binary. If not, you will need to compile the tool yourself.
+Check the [releases page](https://github.com/MarcusCemes/openrisc-prototype-flash-tool/releases) to see if there's a pre-compiled binary. If not, you will need to compile the tool yourself.
 
 You will need to install the [Rust toolchain](https://www.rust-lang.org/).
 If you are on Windows, you will also need the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/). On Linux, you will need GCC.
