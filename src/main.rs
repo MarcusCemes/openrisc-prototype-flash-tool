@@ -1,12 +1,19 @@
 mod device;
 mod log;
 
-use std::{fs::File, io::stdin, time::Duration};
+use std::{
+    fs::File,
+    io::{stdin, Read},
+};
 
 use clap::Parser;
-use device::VirtualPrototype;
+use device::{Command, VirtualPrototype};
 use eyre::Result;
 use log::with_status;
+
+use crate::device::Sequence;
+
+const DEFAULT_BAUD_RATE: u32 = 115_200;
 
 #[derive(Parser, Debug)]
 #[clap(name = "OpenRISC Prototype Flash Tool", author, version)]
@@ -17,41 +24,35 @@ struct Args {
     #[arg(help = r#"Path of file to send, or "-" for stdin"#)]
     file: String,
 
-    #[arg(short, long, default_value_t = 115_200)]
+    #[arg(short, long, default_value_t = DEFAULT_BAUD_RATE)]
     baud_rate: u32,
-
-    #[arg(
-        short,
-        long,
-        help = "Wait for the device to reset before sending the program"
-    )]
-    wait_reset: bool,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let mut device = with_status(
-        &format!("Opening port {} ({})", args.port, args.baud_rate),
-        || VirtualPrototype::open(&args.port, args.baud_rate),
-    )?;
+    eprintln!(
+        "\n  Port:      {}\n  Baud rate: {}\n",
+        args.port, args.baud_rate
+    );
 
-    if args.wait_reset {
-        with_status("Waiting for device reset", || device.wait_for_reset())?;
-    }
-
-    // The device should now be in the bootloader, set a short
-    // timeout in case the device does not respond as expected
-    device.set_timeout(Duration::from_millis(500))?;
-
-    // Request the device to enter program mode
-    with_status("Requesting program write", || {
-        device.request_program_write()
+    let mut device = with_status("Connecting to port", || {
+        VirtualPrototype::open(&args.port, args.baud_rate)
     })?;
 
-    // Wait until the device is ready to receive the program
-    with_status("Waiting for ready response", || {
-        device.wait_for_program_ready()
+    let in_bios = with_status("Verifying device state", || device.in_bios())?;
+
+    if !in_bios {
+        with_status("Not in BIOS, waiting for manual device reset", || {
+            device.wait_for_reset()
+        })?;
+    }
+
+    // Request the device to enter program mode, expecting the device to respond
+    // with a programming ready sequence to indicate that it is ready to receive
+    with_status("Requesting program write", || {
+        device.send_command(Command::Program)?;
+        device.wait_for_sequence(device::Sequence::Programming)
     })?;
 
     // Stream the complete program (.mem) to the device. The device
@@ -59,24 +60,25 @@ fn main() -> Result<()> {
     write_program(&mut device, &args)?;
 
     // Finally, request the device to run the program
-    with_status("Requesting run", || device.run_program())?;
-
-    Ok(())
+    with_status("Requesting run", || device.send_command(Command::Run))
 }
 
 /// Stream the correct program source to the device. The device
 /// should recognise that the transfer is complete once it receives
 /// a special termination sequence.
 fn write_program(device: &mut VirtualPrototype, args: &Args) -> Result<()> {
-    match args.file.as_str() {
-        "-" => with_status("Streaming stdin", || {
-            let mut stream = stdin();
-            device.write_stream(&mut stream)
-        }),
+    // Select the correct message and stream to read from
+    let (msg, mut stream): (&str, Box<dyn Read>) = match args.file.as_str() {
+        "-" => ("Streaming stdin", Box::new(stdin())),
+        path => ("Sending file", Box::new(File::open(path)?)),
+    };
 
-        _ => with_status("Sending file", || {
-            let mut file = File::open(&args.file)?;
-            device.write_stream(&mut file)
-        }),
-    }
+    let bytes_written = with_status(msg, || {
+        let bytes_written = device.write_stream(&mut *stream)?;
+        device.wait_for_sequence(Sequence::UploadComplete)?;
+        Ok(bytes_written)
+    })?;
+
+    eprintln!("  ({} bytes written)", bytes_written);
+    Ok(())
 }
