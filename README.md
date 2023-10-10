@@ -39,13 +39,18 @@ This should "just work". If not, you may need to install additional libraries, s
 
 ## Usage
 
-First, ensure that the device is connected to the computer and the device BIOS is loaded.
-Simply run the executable, specifying the correct serial port and the location of the
-program to flash:
+Ensure that the device is connected to the computer, and ensure that it is in the BIOS
+by pressing the reset button. Run the OPFT executable, specifying the serial port to use
+and the source of the program to flash:
 
 ```bat
 openrisc-prototype-flash-tool /dev/ttyUSB0 path/to/program.mem
 ```
+
+The negotiation and flashing process should begin automatically and roughly takes a second.
+If the device is detected to be in the BIOS, the tool will display "waiting for device reset".
+Press the device reset button and the device should continue once it receives the
+post-reset BIOS welcome message.
 
 To view all available options, run the following command:
 
@@ -53,30 +58,9 @@ To view all available options, run the following command:
 openrisc-prototype-flash-tool --help
 ```
 
-### Waiting for device reset
-
-Using the `--wait-reset` flag ensures that the device is in the correct state before
-attempting to flash the program, by waiting for the post-reset BIOS welcome message
-to be transmitted. This is useful when used as part of the compilation script to
-automatically transfer the program once the reset button is manually pressed.
-
-```bash
-#!/bin/bash
-
-set -e
-set -o pipefail
-
-or1k-elf-gcc -Os  -nostartfiles -o program main.c
-convert_or32 program
-openrisc-prototype-flash-tool --wait-reset /dev/ttyUSB0 program.mem
-```
-
-The tool will display `Waiting for device reset...`, press the reset button on the
-device and the tool will automatically continue once the device is ready.
-
 ### Integration with WSL2
 
-It's not currently possible to natively access serial ports on the host system from
+It's not currently possible to directly access serial ports on the host system from
 within the WSL2 environment. It is, however, possible to run a Windows executable from
 WSL2 that runs on the host system, which can communicate with the serial port, while
 streaming data over stdin.
@@ -84,14 +68,12 @@ streaming data over stdin.
 Ensure that the Windows executable `openrisc-prototype-flash-tool.exe` is placed somewhere
 on the Windows filesystem, ideally somewhere that is on the Windows PATH (remember to restart WSL if you modify your Windows PATH).
 
-Then, from within WSL2 you can run the tool as part of your compilation script, using "-" to
-indicate that the program should be read from stdin:
+Then, from within WSL2 you can run the tool as part of your compilation script, using "-" as
+the source to indicate that the program should be read from stdin:
 
 ```bash
 #!/bin/bash
-
-set -e
-set -o pipefail
+set -eo pipefail
 
 or1k-elf-gcc -Os  -nostartfiles -o program main.c
 convert_or32 program
